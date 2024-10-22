@@ -6,7 +6,7 @@
 
 // for fixing
 #ifndef MAX_REDUCE_SIZE
-#define MAX_REDUCE_SIZE 80000000
+#define MAX_REDUCE_SIZE 50000000
 #endif
 
 // function hook describ how inner and outer tuple are reordered to result tuple

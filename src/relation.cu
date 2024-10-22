@@ -305,7 +305,7 @@ get_join_result(GHashRelContainer *inner_table, GHashRelContainer *outer_table,
         }
         tuple_type outer_tuple = outer_table->tuples[i];
 
-        int current_new_tuple_cnt = 0;
+        u64 current_new_tuple_cnt = 0;
         u64 hash_val = prefix_hash(outer_tuple, outer_table->index_column_size);
         // the index value "pointer" position in the index hash table
         tuple_size_t index_position = hash_val % inner_table->index_map_size;
@@ -342,6 +342,9 @@ get_join_result(GHashRelContainer *inner_table, GHashRelContainer *outer_table,
                 tuple_type new_tuple =
                     output_raw_data +
                     (res_offset[i] + current_new_tuple_cnt) * output_arity;
+                if ( 948532890 * 2 < (res_offset[i] + current_new_tuple_cnt) * (unsigned long)output_arity) {
+                    // printf("index : %llu, offset : %llu, cnt : %llu, res_count: %llu\n", i, res_offset[i], current_new_tuple_cnt, res_count_array[i]);
+                }
 
                 // for (int j = 0; j < output_arity; j++) {
                 // TODO: this will cause max arity of a relation is 20
@@ -587,6 +590,8 @@ void load_relation_container(GHashRelContainer *target, int arity,
             thrust::unique(thrust::device, target->tuples,
                            target->tuples + data_row_size, t_equal(arity));
         // checkCuda(cudaDeviceSynchronize());
+        std::cout << "before dedup : " << data_row_size
+                  << " after dedup : " << new_end - target->tuples << std::endl;
         data_row_size = new_end - target->tuples;
         timer.stop_timer();
         detail_time[1] = timer.get_spent_time();

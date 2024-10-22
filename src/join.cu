@@ -3,6 +3,7 @@
 #include <thrust/reduce.h>
 #include <thrust/scan.h>
 #include <thrust/unique.h>
+#include <thrust/iterator/constant_iterator.h>
 
 #include "../include/exception.cuh"
 #include "../include/print.cuh"
@@ -75,36 +76,52 @@ void RelationalJoin::operator()() {
 
     timer.start_timer();
     tuple_size_t total_result_rows = 0;
-    for (tuple_size_t i = 0; i < outer->tuple_counts; i = i + MAX_REDUCE_SIZE) {
-        tuple_size_t reduce_size = MAX_REDUCE_SIZE;
-        if (i + MAX_REDUCE_SIZE > outer->tuple_counts) {
-            reduce_size = outer->tuple_counts - i;
-        }
-        tuple_size_t reduce_v = thrust::reduce(
-            thrust::device, result_counts_array + i,
-            result_counts_array + i + reduce_size, 0);
-        total_result_rows += reduce_v;
-        // checkCuda(cudaDeviceSynchronize());
-    }
-    
-    // std::cout << output_rel->name << "   " << outer->index_column_size
-    //           << " join result size(non dedup) " << total_result_rows
-    //           << std::endl;
-    // print_memory_usage();
+    // for (tuple_size_t i = 0; i < outer->tuple_counts; i = i + MAX_REDUCE_SIZE) {
+    //     tuple_size_t reduce_size = MAX_REDUCE_SIZE;
+    //     if (i + MAX_REDUCE_SIZE > outer->tuple_counts) {
+    //         reduce_size = outer->tuple_counts - i;
+    //     }
+    //     tuple_size_t reduce_v = thrust::reduce(
+    //         thrust::device, result_counts_array + i,
+    //         result_counts_array + i + reduce_size, 0);
+    //     total_result_rows += reduce_v;
+    //     // checkCuda(cudaDeviceSynchronize());
+    // }
+
     tuple_size_t *result_counts_offset;
     checkCuda(cudaMalloc((void **)&result_counts_offset,
                          outer->tuple_counts * sizeof(tuple_size_t)));
     checkCuda(cudaMemcpy(result_counts_offset, result_counts_array,
                          outer->tuple_counts * sizeof(tuple_size_t),
                          cudaMemcpyDeviceToDevice));
+
+    // thrust::host_vector<u64> h_result_counts_offset(outer->tuple_counts);
+    // checkCuda(cudaMemcpy(h_result_counts_offset.data(),
+    //                      result_counts_offset,
+    //                      outer->tuple_counts * sizeof(tuple_size_t),
+    //                      cudaMemcpyDeviceToHost));
+    // count on cpu
+    // u64 cpu_total_result_rows = 0;
+    // for (u64 i = 0; i < outer->tuple_counts; i++) {
+    //     cpu_total_result_rows += h_result_counts_offset[i];
+    // }
+    // std::cout << "total result rows on cpu " << cpu_total_result_rows << std::endl;
     thrust::exclusive_scan(thrust::device, result_counts_offset,
                            result_counts_offset + outer->tuple_counts,
                            result_counts_offset);
+    u64 last_offset = 0;
+    checkCuda(cudaMemcpy(&last_offset, result_counts_offset + outer->tuple_counts - 1,
+                         sizeof(u64), cudaMemcpyDeviceToHost));
+    u64 last_count = 0;
+    checkCuda(cudaMemcpy(&last_count, result_counts_array + outer->tuple_counts - 1,
+                         sizeof(u64), cudaMemcpyDeviceToHost));
+    total_result_rows = last_offset + last_count;
 
-    checkCuda(cudaDeviceSynchronize());
     timer.stop_timer();
     detail_time[1] += timer.get_spent_time();
-
+    std::cout << output_rel->name << "   " << outer->index_column_size
+              << " join result size(non dedup) " << total_result_rows
+              << std::endl;
     timer.start_timer();
     column_type *join_res_raw_data;
     u64 join_res_raw_data_mem_size =
@@ -112,6 +129,9 @@ void RelationalJoin::operator()() {
     checkCuda(
         cudaMalloc((void **)&join_res_raw_data, join_res_raw_data_mem_size));
     checkCuda(cudaMemset(join_res_raw_data, 0, join_res_raw_data_mem_size));
+    
+    print_memory_usage();
+    checkCuda(cudaDeviceSynchronize());
     get_join_result<<<grid_size, block_size>>>(
         inner_device, outer_device, outer->index_column_size, tuple_generator,
         tuple_pred, output_arity, join_res_raw_data, result_counts_array,

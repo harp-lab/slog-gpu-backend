@@ -139,6 +139,7 @@ void LIE::fixpoint_loop() {
             // checkCuda(cudaDeviceSynchronize());
             tuple_size_t deduplicate_size =
                 deuplicated_end - deduplicated_newt_tuples;
+            std::cout << "set diff deduplicate size: " << deduplicate_size << std::endl;
 
             if (deduplicate_size != 0) {
                 fixpoint_flag = false;
